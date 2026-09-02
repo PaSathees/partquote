@@ -1,0 +1,28 @@
+# Private working notes — never committed
+NOTES.local.md
+*.local.md
+
+# Third-party corpus documents (fetched, not redistributed)
+corpus/raw/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
