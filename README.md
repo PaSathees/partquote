@@ -1,8 +1,9 @@
-# upgrade-planner
+# partquote
 
-An agentic planning assistant for hardware upgrades. Give it your printer, current hardware,
-budget, and skill level; it plans a Klipper conversion with compatible parts, a wiring and
-config checklist, safety risks, and a source for every claim.
+An agentic quoting assistant for 3D-printing service bureaus. A bureau configures its machines,
+materials and pricing rules; a customer uploads part files and gets a quote — per-part price,
+lead time, manufacturability findings, and a cited reason for the recommended material — then
+confirms and places the order.
 
 **Status: early work in progress — nothing runs yet.** [Architecture](#architecture) · [Decisions](docs/adr/)
 
@@ -14,13 +15,18 @@ config checklist, safety risks, and a source for every claim.
 
 <!-- TODO: screenshot/GIF above the fold once there's a UI — worth more than any paragraph -->
 
-The intended behaviour. Ask for an upgrade, answer a few clarifying questions, get a staged plan:
+The intended behaviour. Upload STLs, answer a couple of clarifying questions, get a quote:
 
-- Compatible parts, and rejected options **with the reason** they were rejected
-- Bill of materials
-- Wiring + `printer.cfg` checklist
-- Risk register, conservative about anything mains-powered
-- Citations on every claim, or an explicit "assumption" label
+- Per-part price and lead time, itemised — material, machine time, setup, finishing
+- DFM findings: thin walls, oversize parts, non-watertight meshes, risky overhangs
+- Material and process recommendation, **with the datasheet or policy line it came from**
+- Confirmation step before any order is created
+
+## The rule this project is built around
+
+**The LLM never computes the price.** Pricing is deterministic Python over the bureau's configured
+rates. The model handles intake, clarification, manufacturability narrative, material
+recommendation and the quote copy. Every figure traces to the pricing engine.
 
 ## Architecture
 
@@ -29,8 +35,9 @@ flowchart LR
   UI[Next.js] --> API[FastAPI]
   API --> G[LangGraph agent]
   G --> R[(Postgres + pgvector)]
+  G --> P[Pricing engine]
   G --> T[Tools / MCP]
-  API --> Q[Worker: ingestion]
+  API --> Q[Worker: geometry + ingestion]
 ```
 
 The planned shape. <!-- TODO: one paragraph — what crosses which boundary and why, max five sentences -->
@@ -45,24 +52,26 @@ with Docker and an OpenAI-compatible API key as the only prerequisites.
 None of this is built yet. Each line gets a link to the code and an ADR as it lands.
 <!-- TODO: rename this section to "How it works" once the bullets point at real code -->
 
-- **Retrieval** — hybrid search + reranking, not naive top-k
-- **Agent** — LangGraph state machine with a human-in-the-loop checkpoint
+- **Retrieval** — hybrid search + reranking with tenant/material filtering, not naive top-k
+- **Agent** — LangGraph state machine, human in the loop to clarify and to confirm the order
+- **Geometry** — `trimesh` in a worker: volume, bounding box, watertightness, DFM heuristics
 - **Tools** — one served over MCP, the rest in-process
-- **Ingestion** — background job, so a slow PDF never blocks a request
-- **Evals** — golden set of real upgrades, run as a CI gate
+- **Ingestion** — background job, so a slow datasheet never blocks a request
+- **Evals** — golden set of parts with known-correct quotes, run as a CI gate
 
 ## Corpus
 
-Deliberately small: Klipper docs, 3–5 boards, and the parts in my own build.
-`corpus/sources.yaml` will be the manifest; `corpus/compatibility.yaml` is hand-written.
-Third-party manuals are **not** redistributed here — `scripts/fetch_corpus.py` pulls them
-into a gitignored `corpus/raw/` under their own licenses.
+Deliberately small: material datasheets, spec sheets for a handful of printers, the bureau's own
+pricing and DFM policy documents, and a few past quotes. Third-party datasheets are **not**
+redistributed here — `scripts/fetch_corpus.py` pulls them into a gitignored `corpus/raw/` under
+their own licenses.
 
-## Safety
+## Trust and safety
 
-This plans work involving mains AC, heaters, PSUs, and firmware flashing. The agent is
-designed to cite its sources, ask before finalising, and defer to the manual and a multimeter.
-It is a planning aid, not an authority. Verify before you wire anything.
+A quote is a commercial commitment, and part files come from strangers. The agent is designed so
+that no price originates in the model, no order is created without explicit confirmation, and
+nothing inside an uploaded file — filename, header, embedded metadata — can steer a tool call.
+Verify a quote against your own rates before you send it to a customer.
 
 ## Limitations
 
@@ -73,9 +82,10 @@ Too early to have honest numbers here. They go in once the eval set runs.
 ## Roadmap
 
 - [ ] FastAPI + pgvector skeleton, corpus frozen
+- [ ] STL parse + deterministic pricing engine
 - [ ] Retrieval with citations
 - [ ] Deployed
-- [ ] LangGraph agent + HITL
+- [ ] LangGraph agent + HITL on clarify and order
 - [ ] Tools + MCP
 - [ ] Hybrid search + reranking, background ingestion
 - [ ] Tracing, evals, CI
